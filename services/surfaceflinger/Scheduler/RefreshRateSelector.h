@@ -380,7 +380,7 @@ public:
             EXCLUDES(mLock);
 
     // Gets the FpsRange that the FrameRateCategory represents.
-    static FpsRange getFrameRateCategoryRange(FrameRateCategory category);
+    FpsRange getFrameRateCategoryRange(FrameRateCategory category) const REQUIRES(mLock);
 
     std::optional<KernelIdleTimerController> kernelIdleTimerController() {
         return mConfig.kernelIdleTimerController;
@@ -439,7 +439,7 @@ public:
 
     bool isVrrDevice() const;
 
-    std::pair<Fps, Fps> getFrameRateCategoryRates() const { return kFrameRateCategoryRates; }
+    std::pair<Fps, Fps> getFrameRateCategoryRates() const EXCLUDES(mLock);
 
     std::vector<float> getSupportedFrameRates() const EXCLUDES(mLock);
 

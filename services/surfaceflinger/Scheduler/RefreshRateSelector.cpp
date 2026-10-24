@@ -586,6 +586,7 @@ auto RefreshRateSelector::getRankedFrameRatesLocked(const std::vector<LayerRequi
     int explicitExact = 0;
     int explicitGteLayers = 0;
     int explicitCategoryVoteLayers = 0;
+    int highCategoryVoteLayers = 0;
     int seamedFocusedLayers = 0;
     int categorySmoothSwitchOnlyLayers = 0;
     int focusedLayers = 0;
@@ -618,6 +619,9 @@ auto RefreshRateSelector::getRankedFrameRatesLocked(const std::vector<LayerRequi
                 // sent from UI Toolkit.
                 if (layer.frameRateCategory != FrameRateCategory::HighHint) {
                     explicitCategoryVoteLayers++;
+                }
+                if (layer.frameRateCategory == FrameRateCategory::High) {
+                    highCategoryVoteLayers++;
                 }
                 if (layer.frameRateCategory == FrameRateCategory::NoPreference) {
                     noPreferenceLayers++;
@@ -888,7 +892,9 @@ auto RefreshRateSelector::getRankedFrameRatesLocked(const std::vector<LayerRequi
     // Now that we scored all the refresh rates we need to pick the one that got the highest
     // overallScore. Sort the scores based on their overallScore in descending order of priority.
     const RefreshRateOrder refreshRateOrder =
-            maxVoteLayers > 0 ? RefreshRateOrder::Descending : RefreshRateOrder::Ascending;
+            (maxVoteLayers > 0 || highCategoryVoteLayers > 0)
+                    ? RefreshRateOrder::Descending
+                    : RefreshRateOrder::Ascending;
     std::sort(scores.begin(), scores.end(),
               RefreshRateScoreComparator{.refreshRateOrder = refreshRateOrder});
 
@@ -1588,6 +1594,16 @@ std::vector<float> RefreshRateSelector::getSupportedFrameRates() const {
     return supportedFrameRates;
 }
 
+std::pair<Fps, Fps> RefreshRateSelector::getFrameRateCategoryRates() const {
+    std::scoped_lock lock(mLock);
+    using fps_approx_ops::operator<;
+    const Fps maxFps = mMaxRefreshRateModeIt != DisplayModeIterator{}
+            ? mMaxRefreshRateModeIt->second->getPeakFps()
+            : kFrameRateCategoryRateHigh;
+    const Fps highFps = kFrameRateCategoryRateHigh < maxFps ? maxFps : kFrameRateCategoryRateHigh;
+    return {kFrameRateCategoryRateNormal, highFps};
+}
+
 FpsRange RefreshRateSelector::getSupportedFrameRateRangeLocked() const {
     using fps_approx_ops::operator<;
     if (mMaxRefreshRateModeIt->second->getPeakFps() < kMinSupportedFrameRate) {
@@ -1696,14 +1712,19 @@ std::chrono::milliseconds RefreshRateSelector::getIdleTimerTimeout() {
 }
 
 // TODO(b/293651105): Extract category FpsRange mapping to OEM-configurable config.
-FpsRange RefreshRateSelector::getFrameRateCategoryRange(FrameRateCategory category) {
+FpsRange RefreshRateSelector::getFrameRateCategoryRange(FrameRateCategory category) const {
+    using fps_approx_ops::operator<;
+    const Fps maxFps = mMaxRefreshRateModeIt != DisplayModeIterator{}
+            ? mMaxRefreshRateModeIt->second->getPeakFps()
+            : 120_Hz;
+    const Fps categoryMax = 120_Hz < maxFps ? maxFps : 120_Hz;
     switch (category) {
         case FrameRateCategory::High:
-            return FpsRange{kFrameRateCategoryRateHigh, 120_Hz};
+            return FpsRange{kFrameRateCategoryRateHigh, categoryMax};
         case FrameRateCategory::Normal:
-            return FpsRange{kFrameRateCategoryRateNormal, 120_Hz};
+            return FpsRange{kFrameRateCategoryRateNormal, categoryMax};
         case FrameRateCategory::Low:
-            return FpsRange{48_Hz, 120_Hz};
+            return FpsRange{48_Hz, categoryMax};
         case FrameRateCategory::HighHint:
         case FrameRateCategory::NoPreference:
         case FrameRateCategory::Default:
