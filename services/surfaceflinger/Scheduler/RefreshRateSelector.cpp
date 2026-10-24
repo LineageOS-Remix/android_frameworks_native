@@ -588,6 +588,7 @@ auto RefreshRateSelector::getRankedFrameRatesLocked(const std::vector<LayerRequi
     int explicitCategoryVoteLayers = 0;
     int seamedFocusedLayers = 0;
     int categorySmoothSwitchOnlyLayers = 0;
+    int focusedLayers = 0;
 
     for (const auto& layer : layers) {
         switch (layer.vote) {
@@ -628,6 +629,9 @@ auto RefreshRateSelector::getRankedFrameRatesLocked(const std::vector<LayerRequi
 
         if (layer.seamlessness == Seamlessness::SeamedAndSeamless && layer.focused) {
             seamedFocusedLayers++;
+        }
+        if (layer.focused) {
+            focusedLayers++;
         }
         if (layer.frameRateCategorySmoothSwitchOnly) {
             categorySmoothSwitchOnlyLayers++;
@@ -749,6 +753,17 @@ auto RefreshRateSelector::getRankedFrameRatesLocked(const std::vector<LayerRequi
 
             if (smoothSwitchOnly && modePtr->getId() != activeModeId) {
                 ALOGV("%s ignores %s because it's non-VRR and smooth switch only."
+                      " Current mode = %s",
+                      formatLayerInfo(layer, weight).c_str(), to_string(*modePtr).c_str(),
+                      to_string(activeMode).c_str());
+                continue;
+            }
+
+            // Do not allow non-focused sub-layers (such as video previews in a feed or
+            // animated stickers/avatars) to force a hardware display mode switch away
+            // from the active interactive mode.
+            if (focusedLayers > 0 && !layer.focused && modePtr->getId() != activeModeId) {
+                ALOGV("%s ignores %s because it's not focused and cannot change active display mode."
                       " Current mode = %s",
                       formatLayerInfo(layer, weight).c_str(), to_string(*modePtr).c_str(),
                       to_string(activeMode).c_str());
